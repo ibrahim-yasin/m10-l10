@@ -34,8 +34,11 @@ def assemble_prompt(question: str, chunks: list[dict]) -> Tuple[str, dict[int, d
     # TODO: walk the chunks list, build numbered source lines, and call
     #       PROMPT_TEMPLATE.format(...). Return the prompt string and the
     #       index→chunk mapping. Index starts at 1, not 0.
-    raise NotImplementedError
+    numbered = {i+1: chunk for i, chunk in enumerate(chunks)}
+    sources = "\n".join(f"[{i}] {chunk['text']}" for i, chunk in numbered.items())
+    prompt = PROMPT_TEMPLATE.format(sources=sources, question=question) 
 
+    return prompt, numbered
 
 def extract_citations(answer: str, numbered: dict[int, dict]) -> list[dict]:
     """Pull [N]-style markers from `answer` and resolve to retrieved chunks.
@@ -47,8 +50,13 @@ def extract_citations(answer: str, numbered: dict[int, dict]) -> list[dict]:
     # TODO: iterate CITATION_PATTERN.finditer(answer), look up each index
     #       in `numbered`, and emit one {"chunk_id", "score"} dict per
     #       unique index that maps to a real retrieved chunk.
-    raise NotImplementedError
-
+    citations = []
+    for match in CITATION_PATTERN.finditer(answer):
+        index = int(match.group(1))
+        if index in numbered:
+            chunk = numbered[index]
+            citations.append({"chunk_id": chunk["id"], "score": chunk["score"]})  
+    return citations  
 
 def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4) -> dict:
     """Run the four-stage RAG pipeline.
@@ -74,4 +82,28 @@ def compose_rag(question: str, embedder, weaviate_client, generator, k: int = 4)
     # 6. If no citations resolved → return the sentinel-shaped dict.
     # 7. confidence = mean(citation scores), clipped to [0, 1].
     # 8. Return {"answer": raw, "citations": citations, "confidence": confidence}.
-    raise NotImplementedError
+    # Step 1: Encode question and query Weaviate
+    question_embedding = embedder.encode(question)  
+    response = weaviate_client.query.get("Chunk", ["text", "id", "score"]).with_near_vector({
+        "vector": question_embedding,
+        "certainty": 0.0
+    }).with_limit(k).do() 
+    retrieved = response.get("data", {}).get("Get", {}).get("Chunk", [])  
+    # Step 2: If no chunks retrieved, return sentinel-shaped dict
+    if not retrieved:
+        return {"answer": SENTINEL, "citations": [], "confidence": 0.0} 
+    # Step 3: Assemble prompt
+    prompt, numbered = assemble_prompt(question, retrieved) 
+    # Step 4: Run generator 
+    raw = generator(prompt, do_sample=False, max_new_tokens=256)[0]["generated_text"]
+    # Step 5: Extract citations 
+    citations = extract_citations(raw, numbered)
+    # Step 6: If no citations resolved, return sentinel-shaped dict   
+    if not citations:
+        return {"answer": SENTINEL, "citations": [], "confidence": 0.0} 
+    # Step 7: Compute confidence as mean citation score, clipped to [0, 1]
+    confidence = sum(citation["score"] for citation in citations) / len(citations)  
+    confidence = max(0.0, min(1.0, confidence))
+    # Step 8: Return the composed dict  
+    return {"answer": raw, "citations": citations, "confidence": confidence}  
+

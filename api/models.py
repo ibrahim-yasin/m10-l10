@@ -19,7 +19,8 @@ class ExtractRequest(BaseModel):
     """
     # TODO: declare the request body field with a Field(...) length
     #       constraint.
-    pass
+    text: str = Field(..., min_length=1, max_length=1000)   
+
 
 
 class Entity(BaseModel):
@@ -30,7 +31,10 @@ class Entity(BaseModel):
     """
     # TODO: declare the span's text, label, and start/end character
     #       offsets.
-    pass
+    text: str
+    label: str
+    start: int
+    end: int
 
 
 class ExtractResponse(BaseModel):
@@ -40,7 +44,7 @@ class ExtractResponse(BaseModel):
     start offset ascending.
     """
     # TODO: declare the field that carries the ordered list of entities.
-    pass
+    entities: list[Entity]  
 
 
 # --- /kg/query -------------------------------------------------------
@@ -52,20 +56,23 @@ class KGRequest(BaseModel):
     """
     # TODO: declare the request field with a Field(...) length
     #       constraint.
-    pass
+    question: str = Field(..., min_length=1, max_length=500)    
+
 
 
 class KGResponse(BaseModel):
     """Response body for POST /kg/query."""
     # TODO: declare the cypher string, the rows the driver returned,
     #       and the row count.
-    pass
+    cypher: str
+    rows: list[dict]
+    count: int
 
 
 class UnsupportedQueryDetail(BaseModel):
     """Structured detail returned on 422 from /kg/query."""
     reason: Literal["unsupported_question"]
-    supported_patterns: List[str]
+    supported_patterns: list[str]
 
 
 # --- /rag/answer -----------------------------------------------------
@@ -78,7 +85,8 @@ class RAGRequest(BaseModel):
     """
     # TODO: declare the question field with a Field(...) length
     #       constraint and a bounded integer `k` with a default.
-    pass
+    question: str = Field(..., min_length=1, max_length=500)
+    k: int = Field(5, ge=1, le=10)
 
 
 class Citation(BaseModel):
@@ -87,7 +95,8 @@ class Citation(BaseModel):
     Field names must match the TypeScript Citation interface.
     """
     # TODO: declare the citation's chunk identifier and retrieval score.
-    pass
+    chunk_id: str
+    score: float    
 
 
 class RAGResponse(BaseModel):
@@ -98,7 +107,9 @@ class RAGResponse(BaseModel):
     """
     # TODO: declare the answer string, the list of citations, and the
     #       confidence score.
-    pass
+    answer: str
+    citations: list[Citation]
+    confidence: float
 
 
 # --- Health / readiness ---------------------------------------------
@@ -106,7 +117,7 @@ class RAGResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Liveness response."""
     # TODO: declare the single field returned by /healthz.
-    pass
+    status: str = "ok"  
 
 
 class ReadyDetail(BaseModel):

@@ -1,25 +1,32 @@
-# Lab-level Docker Compose — api + web only.
-#
-# The four-service stack (api + web + neo4j + weaviate) is the Integration
-# task's deliverable. The Lab stack assumes Neo4j and Weaviate are
-# running externally (the learner started them via the M9/M8 Compose
-# stacks, or via `docker compose` in the Integration repo).
-#
-# TODO: author this file.
-# Required:
-# - service `api`: long-form build with `context: .` and `dockerfile:
-#   api/Dockerfile` (NOT `build: ./api` — see lab guide Task 5; the api
-#   container runs `uvicorn api.main:app` and needs repo-root context so
-#   the starter's package-relative imports resolve). env_file: api/.env
-#   (create from api/.env.example via `cp api/.env.example api/.env` —
-#   Compose looks for the file relative to this compose file, not the
-#   service build context). Healthcheck on /healthz; ports 8000:8000.
-# - service `web` builds from ./web. NEXT_PUBLIC_API_URL must be declared
-#   as a build arg (under `build.args`), set to `http://localhost:8000`.
-#   See reading Section 8 / Section 11 / Common Pitfalls — Next.js bakes
-#   NEXT_PUBLIC_* into the client bundle at build time; an `environment:`
-#   entry runs in the runtime container but never reaches the browser,
-#   so the page fetch resolves against `undefined`. ports 3000:3000;
-#   depends_on api with condition: service_healthy.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - api/.env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
-services: {}
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy

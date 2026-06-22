@@ -1,11 +1,46 @@
-# Lab 10 — frontend Dockerfile. Author this file.
-#
-# TODO: use a multi-stage build to keep the final image small.
-# TODO: stage 1 (named `builder`) installs dependencies and builds the
-#       Next.js app.
-# TODO: stage 2 (named `runner`) copies only the built artifacts and
-#       the files needed at runtime from the builder stage.
-# TODO: expose the Next.js port and start the production server.
-#
-# See lab-guide.md "Containerization" section for the constraints the
-# autograder will check.
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+RUN apk add --no-cache libc6-compat
+
+COPY package.json package-lock.json ./
+
+RUN npm ci
+
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+RUN mkdir -p public
+RUN npm run build
+
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
